@@ -261,8 +261,20 @@ class DiffusionGUI:
                 return
             
         is_simple = self.simple_movement_var.get()
-        self.sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple)
-        self.history = np.zeros((time_steps, total_samples, 2))
+        # self.sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple)
+        # self.history = np.zeros((time_steps, total_samples, 2))
+
+        try:
+            self.sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple)
+        except:
+            mb.showerror("Memory Error", f"Too many molecules are being simulated, try decreasing the number of molecules")
+            return
+
+        try:
+            self.history = np.zeros((time_steps, total_samples, 2))
+        except:
+            mb.showerror("Memory Error", f"Could not allocate memory for matrix of shape ({time_steps}, {total_samples}, 2).\nTry lowering the number of molecules or time frame size")
+            return
 
         self.sim.time_step(start_time)
         self.history[0] = self.sim.positions.copy()

@@ -1,8 +1,5 @@
-import math
-import random
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 
 class diffusionSim:
     def __init__(self, num_samples=256, step_sizes=None, simple_movement=True, colors=None, molecule_ids=None):
