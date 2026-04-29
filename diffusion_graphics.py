@@ -3,6 +3,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import ttk
 import matplotlib.pyplot as plt
+import tkinter.messagebox as mb
 import matplotlib.colors as mcolors
 from diffusion_sim import diffusionSim, moleculeTypeData
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -67,6 +68,7 @@ class DiffusionGUI:
         self.global_max = 10
         self.molecule_rows = []
         self.row_counter = 1
+        self.first_sim = True
 
         self.setup_ui()
         self.run_simulation()
@@ -234,7 +236,8 @@ class DiffusionGUI:
             time_steps = end_time - start_time + 1
             if time_steps <= 0: time_steps = 1
         except ValueError:
-            print("Error: Start and End times must be numbers!")
+            mb.showerror("Simulation Error", "Error: Start and End times must be numbers!")
+            # print("Error: Start and End times must be numbers!")
             return
 
         molecules_type_data = []
@@ -253,7 +256,8 @@ class DiffusionGUI:
                 num_molecule_types[m_id] = count
                 total_samples += count
             except tk.TclError:
-                print("Error reading a row. Make sure inputs are numbers!")
+                mb.showerror("Simulation Error", "Error reading a row. Make sure inputs are numbers!")
+                # print("Error reading a row. Make sure inputs are numbers!")
                 return
             
         is_simple = self.simple_movement_var.get()
@@ -270,7 +274,8 @@ class DiffusionGUI:
         for t in range(time_steps - 1):
             # Check the clock every single frame to see if we've exceeded the limit
             if time.time() - start_compute_time > max_timeout:
-                print(f"Warning: Simulation cut short! Reached compute timeout of {max_timeout}s.")
+                mb.showerror("Simulation Warning", f"Warning: Simulation cut short! Reached compute timeout of {max_timeout}s.")
+                # print(f"Warning: Simulation cut short! Reached compute timeout of {max_timeout}s.")
                 # Chop off the empty zeros at the end of the history array
                 self.history = self.history[:actual_completed_steps]
                 break
@@ -280,8 +285,13 @@ class DiffusionGUI:
             actual_completed_steps += 1
         
         if actual_completed_steps == 0:
-            print("Simulation failed or timed out immediately.")
+            mb.showerror("Simulation Error", "Simulation failed or timed out immediately.")
+            # print("Simulation failed or timed out immediately.")
             return
+        
+        if self.history.shape == (time_steps, total_samples, 2) and not self.first_sim:
+            mb.showinfo("Simulation finished", "The simulation has finished succesfully")
+        self.first_sim = False
 
         all_x = self.history[:, :, 0]
         all_y = self.history[:, :, 1]
