@@ -69,6 +69,8 @@ class DiffusionGUI:
         self.molecule_rows = []
         self.row_counter = 1
         self.first_sim = True
+        
+        self.last_physics_state = None
 
         self.setup_ui()
         self.run_simulation()
@@ -178,6 +180,7 @@ class DiffusionGUI:
         trigger_update = lambda *args: self.update_visuals(self.time_slider.get())
         show_var.trace_add('write', trigger_update)
         intensity_var.trace_add('write', trigger_update)
+        color_var.trace_add('write', trigger_update)
 
         # Place widgets directly into the grid container
         chk = tk.Checkbutton(self.molecule_container, variable=show_var, bg="#f0f0f0")
@@ -227,83 +230,158 @@ class DiffusionGUI:
             "intensity": intensity_var
         })
 
+    def get_physics_state(self):
+        try:
+            state = {
+                "simple_movement": self.simple_movement_var.get(),
+                "molecules": []
+            }
+            # We explicitly ignore color and intensity because they don't impact the math!
+            for row in self.molecule_rows:
+                state["molecules"].append((row["id"].get(), row["count"].get(), row["step"].get()))
+            return str(state)
+        except:
+            return "error"
+
     def run_simulation(self):
         print("Reading menu and compiling simulation...")
         try:
             start_time = self.start_time_var.get()
             end_time = self.end_time_var.get()
             max_timeout = float(self.timeout_var.get())
+            if end_time < start_time:
+                mb.showerror("Parameter Error", "End time must be greater than start time.")
+                return
             time_steps = end_time - start_time + 1
-            if time_steps <= 0: time_steps = 1
         except ValueError:
-            mb.showerror("Simulation Error", "Error: Start and End times must be numbers!")
-            # print("Error: Start and End times must be numbers!")
+            mb.showerror("Simulation Error", "Start and End times must be numbers!")
             return
+        
+        current_physics_state = self.get_physics_state()
+        total_samples = sum(row["count"].get() for row in self.molecule_rows)
+        time_steps_to_add = 0
 
-        molecules_type_data = []
-        num_molecule_types = {}
-        total_samples = 0
+        if self.history is not None and self.last_physics_state == current_physics_state and start_time == self.prev_start_time and end_time == self.prev_end_time:
+            mb.showinfo("Simulation finished", "The simulation has finished succesfully")
+            return
+        
+        if self.history is not None and self.last_physics_state == current_physics_state:
+            num_done = 0
 
-        for row in self.molecule_rows:
+            if start_time >= self.prev_start_time:
+                amount_to_cut_from_beginning = start_time - self.prev_start_time
+                self.history = self.history[amount_to_cut_from_beginning:]
+                num_done += 1
+
+            if end_time <= self.prev_end_time:
+                amount_to_cut_from_end = len(self.history) + end_time - self.prev_end_time
+                self.history = self.history[:amount_to_cut_from_end]
+                num_done += 1
+
+            if num_done == 2:
+                all_x = self.history[:, :, 0]
+                all_y = self.history[:, :, 1]
+                all_distances = np.sqrt(all_x**2 + all_y**2)
+                self.max_simulation_dist = np.max(all_distances) if len(all_distances) > 0 else 10
+
+                unique_ids = np.unique(self.sim.molecule_ids)
+                self.hist_filter_dropdown["values"] = ["All"] + [f"Type {m_id}" for m_id in unique_ids]
+                self.hist_filter_var.set("All")
+
+                self.prev_start_time = start_time
+                self.prev_end_time = end_time
+
+                self.time_slider.config(to=max(0, len(self.history) - 1))
+                self.time_slider.set(0)
+                self.update_visuals(0)
+
+                mb.showinfo("Simulation finished", "The simulation has finished succesfully")
+                return
+        
+        if self.history is not None and self.last_physics_state == current_physics_state and start_time >= self.prev_start_time and start_time < self.prev_end_time and end_time > self.prev_end_time:
+            time_steps_to_add = end_time - self.prev_end_time
+
             try:
-                m_id = row["id"].get()
-                count = row["count"].get()
-                step = row["step"].get()
-                color = row["color"].get()
-
-                m_data = moleculeTypeData(m_id, step, color)
-                molecules_type_data.append(m_data)
-                num_molecule_types[m_id] = count
-                total_samples += count
-            except tk.TclError:
-                mb.showerror("Simulation Error", "Error reading a row. Make sure inputs are numbers!")
-                # print("Error reading a row. Make sure inputs are numbers!")
+                history = np.zeros((time_steps_to_add, total_samples, 2))
+            except:
+                mb.showerror("Memory Error", f"Could not allocate memory for matrix of shape ({time_steps_to_add}, {total_samples}, 2).\nTry lowering the number of molecules or time frame size")
                 return
             
-        is_simple = self.simple_movement_var.get()
-        # self.sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple)
-        # self.history = np.zeros((time_steps, total_samples, 2))
+            starting_steps = 0
+            time_steps = time_steps_to_add
+            sim = self.sim
 
-        try:
-            self.sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple)
-        except:
-            mb.showerror("Memory Error", f"Too many molecules are being simulated, try decreasing the number of molecules")
-            return
+        else:
+            molecules_type_data = []
+            num_molecule_types = {}
 
-        try:
-            self.history = np.zeros((time_steps, total_samples, 2))
-        except:
-            mb.showerror("Memory Error", f"Could not allocate memory for matrix of shape ({time_steps}, {total_samples}, 2).\nTry lowering the number of molecules or time frame size")
-            return
+            for row in self.molecule_rows:
+                try:
+                    m_id = row["id"].get()
+                    count = row["count"].get()
+                    step = row["step"].get()
+                    color = row["color"].get()
 
-        self.sim.time_step(start_time)
-        self.history[0] = self.sim.positions.copy()
+                    m_data = moleculeTypeData(m_id, step, color)
+                    molecules_type_data.append(m_data)
+                    num_molecule_types[m_id] = count
+                except tk.TclError:
+                    mb.showerror("Simulation Error", "Error reading a row. Make sure inputs are numbers!")
+                    return
+                
+            is_simple = self.simple_movement_var.get()
+
+            try:
+                sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple)
+            except:
+                mb.showerror("Memory Error", f"Too many molecules are being simulated, try decreasing the number of molecules")
+                return
+
+            try:
+                history = np.zeros((time_steps, total_samples, 2))
+            except:
+                mb.showerror("Memory Error", f"Could not allocate memory for matrix of shape ({time_steps}, {total_samples}, 2).\nTry lowering the number of molecules or time frame size")
+                return
+
+            self.sim = sim
+
+            sim.time_step(start_time)
+            history[0] = sim.positions.copy()
+            starting_steps = 1
+
 
         # --- TIMEOUT SAFETY LOOP ---
         start_compute_time = time.time()
-        actual_completed_steps = 1
+        actual_completed_steps = starting_steps
         
-        for t in range(time_steps - 1):
+        for t in range(time_steps - starting_steps):
             # Check the clock every single frame to see if we've exceeded the limit
             if time.time() - start_compute_time > max_timeout:
-                mb.showerror("Simulation Warning", f"Warning: Simulation cut short! Reached compute timeout of {max_timeout}s.")
-                # print(f"Warning: Simulation cut short! Reached compute timeout of {max_timeout}s.")
+                mb.showerror("Simulation Warning", f"Simulation cut short! Reached compute timeout of {max_timeout}s.")
                 # Chop off the empty zeros at the end of the history array
-                self.history = self.history[:actual_completed_steps]
+                history = history[:actual_completed_steps]
                 break
 
-            self.sim.time_step(1)
-            self.history[t + 1] = self.sim.positions.copy()
+            sim.time_step(1)
+            history[t + starting_steps] = sim.positions.copy()
             actual_completed_steps += 1
+
+        if starting_steps == 0:
+            self.history = np.concatenate((self.history, history), axis=0)
+        else:
+            self.history = history
         
         if actual_completed_steps == 0:
             mb.showerror("Simulation Error", "Simulation failed or timed out immediately.")
-            # print("Simulation failed or timed out immediately.")
             return
-        
-        if self.history.shape == (time_steps, total_samples, 2) and not self.first_sim:
+
+        if self.history.shape == (time_steps + time_steps_to_add, total_samples, 2) and not self.first_sim:
             mb.showinfo("Simulation finished", "The simulation has finished succesfully")
         self.first_sim = False
+
+        self.last_physics_state = current_physics_state
+        self.prev_start_time = start_time
+        self.prev_end_time = end_time
 
         all_x = self.history[:, :, 0]
         all_y = self.history[:, :, 1]
@@ -314,7 +392,7 @@ class DiffusionGUI:
         self.hist_filter_dropdown["values"] = ["All"] + [f"Type {m_id}" for m_id in unique_ids]
         self.hist_filter_var.set("All")
 
-        self.time_slider.config(to=max(0, actual_completed_steps - 1))
+        self.time_slider.config(to=max(0, len(self.history) - 1))
         self.time_slider.set(0)
         self.update_visuals(0)
 
@@ -327,11 +405,13 @@ class DiffusionGUI:
         # Gather live UI data for Show/Hide and Intensity
         type_visibility = {}
         type_intensities = {}
+        type_colors = {}
         for row in self.molecule_rows:
             try:
                 m_id = row["id"].get()
                 type_visibility[m_id] = row["show"].get()
                 type_intensities[m_id] = row["intensity"].get()
+                type_colors[m_id] = row["color"].get()
             except:
                 pass
 
@@ -342,7 +422,8 @@ class DiffusionGUI:
         vis_x = current_positions[:, 0][visible_mask]
         vis_y = current_positions[:, 1][visible_mask]
         vis_ids = self.sim.molecule_ids[visible_mask]
-        vis_colors = self.sim.colors[visible_mask]
+
+        vis_colors = vis_colors = np.array([type_colors.get(m_id, "gray") for m_id in vis_ids])
         
         distances = np.sqrt(vis_x**2 + vis_y**2)
         max_dist = np.max(distances) if len(distances) > 0 else 0.1 
