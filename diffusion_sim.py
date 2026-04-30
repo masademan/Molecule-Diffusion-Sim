@@ -3,19 +3,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class diffusionSim:
-    def __init__(self, num_samples=256, step_sizes=None, simple_movement=True, colors=None, molecule_ids=None):
+    def __init__(self, num_samples=256, step_sizes=None, simple_movement=True, colors=None, molecule_ids=None, seed=-1):
         self.num_samples = num_samples
         self.step_sizes = cp.array(step_sizes) if step_sizes else cp.ones(num_samples)
         self.simple_movement = simple_movement
         self.colors = np.array(colors) if colors else np.array(["white"] * num_samples)
         self.molecule_ids = np.array(molecule_ids) if molecule_ids is not None else np.zeros(num_samples)
+
+        if seed != -1:
+            cp.random.seed(seed)
         
         # Shape: (num_samples, 2). Column 0 is X, Column 1 is Y.
         # Starts all molecules at (0, 0)
         self.positions = cp.zeros((num_samples, 2))
     
     @classmethod
-    def from_moleculeTypeData(cls, molecules_type_data: list[moleculeTypeData], num_molecule_types: dict[int, int], simple_movement=True):
+    def from_moleculeTypeData(cls, molecules_type_data: list[moleculeTypeData], num_molecule_types: dict[int, int], simple_movement=True, seed=-1):
         """
         molecules_type_data: A list of moleculeTypeData classes
         num_molecule_types: A dictionary with the molecule_id's as the key, and the number of each molecule as the value
@@ -25,7 +28,7 @@ class diffusionSim:
         for molecule_type_data in molecules_type_data:
             molecule_id_to_data[molecule_type_data.molecule_id] = molecule_type_data
         
-        diffusion_sim = cls(sum(num_molecule_types.values()), 0, simple_movement)
+        diffusion_sim = cls(sum(num_molecule_types.values()), 0, simple_movement, seed=seed)
         step_sizes = []
         colors = []
         molecule_ids = []
