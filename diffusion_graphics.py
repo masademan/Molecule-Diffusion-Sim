@@ -82,89 +82,89 @@ class DiffusionGUI:
         self.run_simulation()
 
     def setup_ui(self):
-        control_frame = tk.Frame(self.root, width=450, bg="#f0f0f0", padx=10, pady=10)
+        control_frame = tk.Frame(self.root, width=450, padx=10, pady=10)
         control_frame.pack(side=tk.LEFT, fill=tk.Y)
 
-        tk.Label(control_frame, text="Simulation Controls", font=("Arial", 14, "bold"), bg="#f0f0f0").pack(pady=10)
+        tk.Label(control_frame, text="Simulation Controls", font=("Arial", 14, "bold")).pack(pady=10)
 
         # --- TIME BOUNDS (Start & End Points) ---
-        time_frame = tk.Frame(control_frame, bg="#f0f0f0")
+        time_frame = tk.Frame(control_frame)
         time_frame.pack(fill=tk.X, pady=5)
         
-        tk.Label(time_frame, text="Start Time:", bg="#f0f0f0").grid(row=0, column=0, sticky="w")
+        tk.Label(time_frame, text="Start Time:").grid(row=0, column=0, sticky="w")
         self.start_time_var = tk.IntVar(value=0)
         tk.Entry(time_frame, textvariable=self.start_time_var, width=8).grid(row=0, column=1, padx=5, pady=2)
 
-        tk.Label(time_frame, text="End Time:", bg="#f0f0f0").grid(row=0, column=2, sticky="w")
+        tk.Label(time_frame, text="End Time:").grid(row=0, column=2, sticky="w")
         self.end_time_var = tk.IntVar(value=100)
         tk.Entry(time_frame, textvariable=self.end_time_var, width=8).grid(row=0, column=3, padx=5, pady=2)
         
-        tk.Label(time_frame, text="Compute Timeout (s):", bg="#f0f0f0").grid(row=1, column=0, columnspan=2, sticky="w", pady=(5,0))
+        tk.Label(time_frame, text="Compute Timeout (s):").grid(row=1, column=0, columnspan=2, sticky="w", pady=(5,0))
         self.timeout_var = tk.DoubleVar(value=5.0) # Defaults to stopping if it takes over 5 seconds
         tk.Entry(time_frame, textvariable=self.timeout_var, width=8).grid(row=1, column=2, sticky="w", padx=5, pady=(5,0))
 
         # --- MOVEMENT SETTINGS ---
-        movement_frame = tk.Frame(control_frame, bg="#f0f0f0")
+        movement_frame = tk.Frame(control_frame)
         movement_frame.pack(fill=tk.X, pady=5)
         
         self.simple_movement_var = tk.BooleanVar(value=True)
-        movement_checkbox = tk.Checkbutton(movement_frame, text="Simple Movement (Grid)", variable=self.simple_movement_var, bg="#f0f0f0")
+        movement_checkbox = tk.Checkbutton(movement_frame, text="Simple Movement (Grid)", variable=self.simple_movement_var)
         movement_checkbox.pack(side=tk.LEFT)
         
         # Attach the Tooltip to the checkbox!
         ToolTip(movement_checkbox, "Checked: Molecules only step Up, Down, Left, or Right on a grid.\nUnchecked: Molecules can step in any continuous random angle.")
 
         # --- DYNAMIC MOLECULE MENU (GRID LAYOUT) ---
-        menu_label_frame = tk.Frame(control_frame, bg="#f0f0f0")
+        menu_label_frame = tk.Frame(control_frame)
         menu_label_frame.pack(fill=tk.X, pady=(15, 5))
         
-        tk.Label(menu_label_frame, text="Molecule Types", font=("Arial", 12, "bold"), bg="#f0f0f0").pack(side=tk.LEFT)
+        tk.Label(menu_label_frame, text="Molecule Types", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
         tk.Button(menu_label_frame, text="+ Add Type", command=self.add_molecule_row).pack(side=tk.RIGHT)
 
         # The container that will hold both headers AND inputs using the grid system
-        self.molecule_container = tk.Frame(control_frame, bg="#f0f0f0")
+        self.molecule_container = tk.Frame(control_frame)
         self.molecule_container.pack(fill=tk.X, pady=5)
         
         # Create headers at row 0 of the grid
         headers = ["Show", "ID", "Count", "Step", "Color", "Intensity", ""]
         for col, text in enumerate(headers):
-            tk.Label(self.molecule_container, text=text, bg="#f0f0f0", font=("Arial", 9, "bold")).grid(row=0, column=col, padx=2, pady=2)
+            tk.Label(self.molecule_container, text=text, font=("Arial", 9, "bold")).grid(row=0, column=col, padx=2, pady=2)
 
         # Populate defaults
         self.add_molecule_row(default_id=1, default_count=200, default_step=1.0, default_color="blue", default_intensity=1.0)
         self.add_molecule_row(default_id=2, default_count=200, default_step=2.0, default_color="red", default_intensity=1.5)
         
         # --- SLIDERS & BUTTONS ---
-        tk.Label(control_frame, text="Molecule Render Radius", bg="#f0f0f0").pack(pady=(15, 0))
-        self.radius_slider = tk.Scale(control_frame, from_=1, to=20, orient=tk.HORIZONTAL, bg="#f0f0f0", command=lambda e: self.update_visuals(self.time_slider.get()))
+        tk.Label(control_frame, text="Molecule Render Radius").pack(pady=(15, 0))
+        self.radius_slider = tk.Scale(control_frame, from_=1, to=20, orient=tk.HORIZONTAL, command=lambda e: self.update_visuals(self.time_slider.get()))
         self.radius_slider.set(5)
         self.radius_slider.pack(fill=tk.X)
 
         tk.Button(control_frame, text="Run & Pre-compute Simulation", command=self.run_simulation, bg="#d0ffd0", font=("Arial", 10, "bold")).pack(pady=15, fill=tk.X)
 
-        tk.Label(control_frame, text="Time Scrubber", bg="#f0f0f0").pack(pady=(5, 0))
-        self.time_slider = tk.Scale(control_frame, from_=0, to=100, orient=tk.HORIZONTAL, bg="#f0f0f0", command=self.update_visuals)
+        tk.Label(control_frame, text="Time Scrubber").pack(pady=(5, 0))
+        self.time_slider = tk.Scale(control_frame, from_=0, to=100, orient=tk.HORIZONTAL, command=self.update_visuals)
         self.time_slider.pack(fill=tk.X)
         self.time_slider.bind("<ButtonPress-1>", self.pause_playback)
 
         # --- PLAYBACK CONTROLS ---
-        playback_frame = tk.Frame(control_frame, bg="#f0f0f0")
+        playback_frame = tk.Frame(control_frame)
         playback_frame.pack(fill=tk.X, pady=(5, 10))
         
         self.play_button = tk.Button(playback_frame, text="▶ Play", width=8, command=self.toggle_play, bg="#d0d0ff", font=("Arial", 9, "bold"))
         self.play_button.pack(side=tk.LEFT, padx=2)
         
-        tk.Label(playback_frame, text="Sec/Frame:", bg="#f0f0f0").pack(side=tk.LEFT, padx=(10, 2))
+        tk.Label(playback_frame, text="Sec/Frame:").pack(side=tk.LEFT, padx=(10, 2))
         self.playback_speed_var = tk.DoubleVar(value=0.1) 
         tk.Entry(playback_frame, textvariable=self.playback_speed_var, width=5).pack(side=tk.LEFT, padx=2)
         
         self.loop_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(playback_frame, text="Loop", variable=self.loop_var, bg="#f0f0f0").pack(side=tk.LEFT, padx=(10, 2))
+        tk.Checkbutton(playback_frame, text="Loop", variable=self.loop_var).pack(side=tk.LEFT, padx=(10, 2))
 
         # --- VISUAL TOGGLES ---
-        visuals_toggle_frame = tk.Frame(control_frame, bg="#f0f0f0")
+        visuals_toggle_frame = tk.Frame(control_frame)
         visuals_toggle_frame.pack(fill=tk.X, pady=(15, 0))
-        tk.Label(visuals_toggle_frame, text="Visual Toggles", bg="#f0f0f0", font=("Arial", 10, "bold")).pack(anchor="w")
+        tk.Label(visuals_toggle_frame, text="Visual Toggles", font=("Arial", 10, "bold")).pack(anchor="w")
 
         self.show_grid_var = tk.BooleanVar(value=True)
         self.show_cross_var = tk.BooleanVar(value=True)
@@ -175,19 +175,19 @@ class DiffusionGUI:
         self.show_cross_var.trace_add('write', trigger_visuals)
         self.show_circle_var.trace_add('write', trigger_visuals)
 
-        tk.Checkbutton(visuals_toggle_frame, text="Grid", variable=self.show_grid_var, bg="#f0f0f0").pack(side=tk.LEFT)
-        tk.Checkbutton(visuals_toggle_frame, text="Origin Cross", variable=self.show_cross_var, bg="#f0f0f0").pack(side=tk.LEFT)
-        tk.Checkbutton(visuals_toggle_frame, text="Max Radius", variable=self.show_circle_var, bg="#f0f0f0").pack(side=tk.LEFT)
+        tk.Checkbutton(visuals_toggle_frame, text="Grid", variable=self.show_grid_var).pack(side=tk.LEFT)
+        tk.Checkbutton(visuals_toggle_frame, text="Origin Cross", variable=self.show_cross_var).pack(side=tk.LEFT)
+        tk.Checkbutton(visuals_toggle_frame, text="Max Radius", variable=self.show_circle_var).pack(side=tk.LEFT)
 
         # --- HISTOGRAM FILTER MENU ---
-        tk.Label(control_frame, text="Histogram Filter", bg="#f0f0f0").pack(pady=(15, 0))
+        tk.Label(control_frame, text="Histogram Filter").pack(pady=(15, 0))
         self.hist_filter_var = tk.StringVar(value="All")
         self.hist_filter_dropdown = ttk.Combobox(control_frame, textvariable=self.hist_filter_var, state="readonly")
         self.hist_filter_dropdown.pack(fill=tk.X)
         self.hist_filter_dropdown.bind("<<ComboboxSelected>>", lambda e: self.update_visuals(self.time_slider.get()))
 
         # --- Right Panel: Visuals ---
-        visual_frame = tk.Frame(self.root, bg="white")
+        visual_frame = tk.Frame(self.root)
         visual_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
         self.fig = plt.Figure(figsize=(10, 8))
@@ -271,7 +271,7 @@ class DiffusionGUI:
         color_var.trace_add('write', trigger_update)
 
         # Place widgets directly into the grid container
-        chk = tk.Checkbutton(self.molecule_container, variable=show_var, bg="#f0f0f0")
+        chk = tk.Checkbutton(self.molecule_container, variable=show_var)
         chk.grid(row=current_row, column=0, pady=2)
         
         ent_id = tk.Entry(self.molecule_container, textvariable=id_var, width=4)
