@@ -69,8 +69,14 @@ class DiffusionGUI:
         self.molecule_rows = []
         self.row_counter = 1
         self.first_sim = True
+
+        self.prev_start_time = 0
+        self.prev_end_time = 100
         
         self.last_physics_state = None
+
+        self.is_playing = False
+        self.play_job = None
 
         self.setup_ui()
         self.run_simulation()
@@ -139,6 +145,39 @@ class DiffusionGUI:
         tk.Label(control_frame, text="Time Scrubber", bg="#f0f0f0").pack(pady=(5, 0))
         self.time_slider = tk.Scale(control_frame, from_=0, to=100, orient=tk.HORIZONTAL, bg="#f0f0f0", command=self.update_visuals)
         self.time_slider.pack(fill=tk.X)
+        self.time_slider.bind("<ButtonPress-1>", self.pause_playback)
+
+        # --- PLAYBACK CONTROLS ---
+        playback_frame = tk.Frame(control_frame, bg="#f0f0f0")
+        playback_frame.pack(fill=tk.X, pady=(5, 10))
+        
+        self.play_button = tk.Button(playback_frame, text="▶ Play", width=8, command=self.toggle_play, bg="#d0d0ff", font=("Arial", 9, "bold"))
+        self.play_button.pack(side=tk.LEFT, padx=2)
+        
+        tk.Label(playback_frame, text="Sec/Frame:", bg="#f0f0f0").pack(side=tk.LEFT, padx=(10, 2))
+        self.playback_speed_var = tk.DoubleVar(value=0.1) 
+        tk.Entry(playback_frame, textvariable=self.playback_speed_var, width=5).pack(side=tk.LEFT, padx=2)
+        
+        self.loop_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(playback_frame, text="Loop", variable=self.loop_var, bg="#f0f0f0").pack(side=tk.LEFT, padx=(10, 2))
+
+        # --- VISUAL TOGGLES ---
+        visuals_toggle_frame = tk.Frame(control_frame, bg="#f0f0f0")
+        visuals_toggle_frame.pack(fill=tk.X, pady=(15, 0))
+        tk.Label(visuals_toggle_frame, text="Visual Toggles", bg="#f0f0f0", font=("Arial", 10, "bold")).pack(anchor="w")
+
+        self.show_grid_var = tk.BooleanVar(value=True)
+        self.show_cross_var = tk.BooleanVar(value=True)
+        self.show_circle_var = tk.BooleanVar(value=True)
+
+        trigger_visuals = lambda *args: self.update_visuals(self.time_slider.get())
+        self.show_grid_var.trace_add('write', trigger_visuals)
+        self.show_cross_var.trace_add('write', trigger_visuals)
+        self.show_circle_var.trace_add('write', trigger_visuals)
+
+        tk.Checkbutton(visuals_toggle_frame, text="Grid", variable=self.show_grid_var, bg="#f0f0f0").pack(side=tk.LEFT)
+        tk.Checkbutton(visuals_toggle_frame, text="Origin Cross", variable=self.show_cross_var, bg="#f0f0f0").pack(side=tk.LEFT)
+        tk.Checkbutton(visuals_toggle_frame, text="Max Radius", variable=self.show_circle_var, bg="#f0f0f0").pack(side=tk.LEFT)
 
         # --- HISTOGRAM FILTER MENU ---
         tk.Label(control_frame, text="Histogram Filter", bg="#f0f0f0").pack(pady=(15, 0))
@@ -161,6 +200,55 @@ class DiffusionGUI:
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=visual_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    def toggle_play(self):
+        if self.history is None or len(self.history) == 0:
+            return
+
+        self.is_playing = not self.is_playing
+
+        if self.is_playing:
+            # Changes button to Pause!
+            self.play_button.config(text="⏸ Pause", bg="#ffd0d0")
+            if self.time_slider.get() >= len(self.history) - 1:
+                self.time_slider.set(0)
+            self.play_step()
+        else:
+            # Changes button back to Play!
+            self.play_button.config(text="▶ Play", bg="#d0d0ff")
+            if self.play_job:
+                self.root.after_cancel(self.play_job)
+                self.play_job = None
+    
+    def pause_playback(self, event=None):
+        # Triggered the exact moment the user clicks the Time Scrubber
+        if self.is_playing:
+            self.toggle_play()
+
+    def play_step(self):
+        if not self.is_playing or self.history is None:
+            return
+        
+        current_step = self.time_slider.get()
+        max_step = len(self.history) - 1
+
+        if current_step < max_step:
+            self.time_slider.set(current_step + 1)
+        else:
+            if self.loop_var.get():
+                self.time_slider.set(0) 
+            else:
+                self.toggle_play() 
+                return
+        
+        try:
+            sec_per_frame = float(self.playback_speed_var.get())
+            if sec_per_frame <= 0.001: sec_per_frame = 0.001 
+        except ValueError:
+            sec_per_frame = 0.1 
+        
+        delay_ms = int(sec_per_frame * 1000)
+        self.play_job = self.root.after(delay_ms, self.play_step)
 
     def add_molecule_row(self, default_id=None, default_count=100, default_step=1.0, default_color="blue", default_intensity=1.0):
         # We assign a row index for the grid layout
@@ -381,7 +469,7 @@ class DiffusionGUI:
 
         self.last_physics_state = current_physics_state
         self.prev_start_time = start_time
-        self.prev_end_time = end_time
+        self.prev_end_time = actual_completed_steps
 
         all_x = self.history[:, :, 0]
         all_y = self.history[:, :, 1]
@@ -460,17 +548,24 @@ class DiffusionGUI:
             marker_area = self.radius_slider.get() ** 2 
             self.ax_map.scatter(vis_x, vis_y, c=mixed_rgbs, s=marker_area, alpha=1.0, edgecolors='none')
                                 
-        self.ax_map.plot(0, 0, marker='+', color='red', markersize=15, markeredgewidth=2)
-        circle = plt.Circle((0, 0), max_dist, color='gray', fill=False, linestyle='--')
-        self.ax_map.add_patch(circle)
+        if self.show_cross_var.get():
+            self.ax_map.plot(0, 0, marker='+', color='red', markersize=15, markeredgewidth=2)
+
+        if self.show_circle_var.get():
+            circle = plt.Circle((0, 0), max_dist, color='gray', fill=False, linestyle='--')
+            self.ax_map.add_patch(circle)
 
         # Factor in the custom start time for the label
         start_t = float(self.start_time_var.get())
         self.ax_map.set_title(f"Molecule Map (Time: {start_t + step:.1f})")
         self.ax_map.set_aspect('equal')
-        self.ax_map.grid(True, linestyle=':', alpha=0.6)
 
-        map_bound = self.max_simulation_dist + self.radius_slider.get() * 1.5
+        if self.show_grid_var.get():
+            self.ax_map.grid(True, linestyle=':', alpha=0.6)
+        else:
+            self.ax_map.grid(False)
+
+        map_bound = self.max_simulation_dist + 10
         
         self.ax_map.set_xlim(-map_bound, map_bound)
         self.ax_map.set_ylim(-map_bound, map_bound)
