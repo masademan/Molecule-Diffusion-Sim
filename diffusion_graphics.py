@@ -1,4 +1,5 @@
 import time
+import random
 import numpy as np
 import tkinter as tk
 from tkinter import ttk
@@ -99,9 +100,14 @@ class DiffusionGUI:
         self.end_time_var = tk.IntVar(value=100)
         tk.Entry(time_frame, textvariable=self.end_time_var, width=8).grid(row=0, column=3, padx=5, pady=2)
         
-        tk.Label(time_frame, text="Compute Timeout (s):").grid(row=1, column=0, columnspan=2, sticky="w", pady=(5,0))
+        tk.Label(time_frame, text="Timeout (s):").grid(row=1, column=0, sticky="w", pady=(5,0))
         self.timeout_var = tk.DoubleVar(value=5.0) # Defaults to stopping if it takes over 5 seconds
-        tk.Entry(time_frame, textvariable=self.timeout_var, width=8).grid(row=1, column=2, sticky="w", padx=5, pady=(5,0))
+        tk.Entry(time_frame, textvariable=self.timeout_var, width=8).grid(row=1, column=1, sticky="w", padx=5, pady=(5,0))
+
+        # SEED UI COMPONENT
+        tk.Label(time_frame, text="Seed (-1=Rand):").grid(row=1, column=2, sticky="w", pady=(5,0))
+        self.seed_var = tk.IntVar(value=-1)
+        tk.Entry(time_frame, textvariable=self.seed_var, width=8).grid(row=1, column=3, sticky="w", padx=5, pady=(5,0))
 
         # --- MOVEMENT SETTINGS ---
         movement_frame = tk.Frame(control_frame)
@@ -322,6 +328,7 @@ class DiffusionGUI:
         try:
             state = {
                 "simple_movement": self.simple_movement_var.get(),
+                "seed": self.seed_var.get(),
                 "molecules": []
             }
             # We explicitly ignore color and intensity because they don't impact the math!
@@ -341,6 +348,13 @@ class DiffusionGUI:
                 mb.showerror("Parameter Error", "End time must be greater than start time.")
                 return
             time_steps = end_time - start_time + 1
+
+            # --- INTERCEPT AND GENERATE SEED ---
+            if self.seed_var.get() == -1:
+                # Generate a random integer seed between 0 and 999,999,999
+                seed_val = random.randint(0, 9999999)
+                # Overwrite the -1 in the text box instantly!
+                self.seed_var.set(seed_val)
         except ValueError:
             mb.showerror("Simulation Error", "Start and End times must be numbers!")
             return
@@ -420,7 +434,7 @@ class DiffusionGUI:
             is_simple = self.simple_movement_var.get()
 
             try:
-                sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple)
+                sim = diffusionSim.from_moleculeTypeData(molecules_type_data, num_molecule_types, simple_movement=is_simple, seed=self.seed_var.get())
             except:
                 mb.showerror("Memory Error", f"Too many molecules are being simulated, try decreasing the number of molecules")
                 return
