@@ -62,7 +62,7 @@ class DiffusionGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Interactive Diffusion Simulation")
-        self.root.geometry("1400x900")
+        self.root.geometry("1400x950")
 
         self.history = None 
         self.current_time_step = 0
@@ -196,13 +196,15 @@ class DiffusionGUI:
         visual_frame = tk.Frame(self.root)
         visual_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        self.fig = plt.Figure(figsize=(10, 8))
-        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1, hspace=0.3, wspace=0.25)
+        # --- 3x2 SUBPLOT GRID ---
+        self.fig = plt.Figure(figsize=(10, 10))
+        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.08, hspace=0.4, wspace=0.25)
         
-        self.ax_map = self.fig.add_subplot(2, 3, (1, 3)) 
-        self.ax_hist_disp = self.fig.add_subplot(2, 3, 4)
-        self.ax_hist_x = self.fig.add_subplot(2, 3, 5)
-        self.ax_hist_y = self.fig.add_subplot(2, 3, 6)
+        self.ax_map = self.fig.add_subplot(3, 2, (1, 2))      # Spans row 1
+        self.ax_hist_disp = self.fig.add_subplot(3, 2, 3)     # Row 2, Left
+        self.ax_mean_disp = self.fig.add_subplot(3, 2, 4)     # Row 2, Right
+        self.ax_hist_x = self.fig.add_subplot(3, 2, 5)        # Row 3, Left
+        self.ax_hist_y = self.fig.add_subplot(3, 2, 6)        # Row 3, Right
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=visual_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -362,6 +364,7 @@ class DiffusionGUI:
         current_physics_state = self.get_physics_state()
         total_samples = sum(row["count"].get() for row in self.molecule_rows)
         time_steps_to_add = 0
+        time_offset = 0
 
         if self.history is not None and self.last_physics_state == current_physics_state and start_time == self.prev_start_time and end_time == self.prev_end_time:
             mb.showinfo("Simulation finished", "The simulation has finished succesfully")
@@ -376,7 +379,7 @@ class DiffusionGUI:
                 num_done += 1
 
             if end_time <= self.prev_end_time:
-                amount_to_cut_from_end = len(self.history) + end_time - self.prev_end_time
+                amount_to_cut_from_end = len(self.history) + end_time - self.prev_end_time + 1
                 self.history = self.history[:amount_to_cut_from_end]
                 num_done += 1
 
@@ -401,7 +404,7 @@ class DiffusionGUI:
                 return
         
         if self.history is not None and self.last_physics_state == current_physics_state and start_time >= self.prev_start_time and start_time < self.prev_end_time and end_time > self.prev_end_time:
-            time_steps_to_add = end_time - self.prev_end_time
+            time_steps_to_add = end_time - self.prev_end_time + 1
 
             try:
                 history = np.zeros((time_steps_to_add, total_samples, 2))
@@ -447,9 +450,19 @@ class DiffusionGUI:
 
             self.sim = sim
 
-            sim.time_step(start_time)
+            start_compute_time = time.time()
+            num_time_steps, remainder_time_steps = divmod(start_time, 5)
+            for _ in range(num_time_steps):
+                if time.time() - start_compute_time > max_timeout:
+                    mb.showerror("Simulation Warning", f"Simulation cut short! Reached compute timeout of {max_timeout}s. Try lowering the start time")
+                    return
+
+                sim.time_step(5)
+            sim.time_step(remainder_time_steps)
+
             history[0] = sim.positions.get()
             starting_steps = 1
+            time_offset = time.time() - start_compute_time
 
 
         # --- TIMEOUT SAFETY LOOP ---
@@ -458,7 +471,7 @@ class DiffusionGUI:
         
         for t in range(time_steps - starting_steps):
             # Check the clock every single frame to see if we've exceeded the limit
-            if time.time() - start_compute_time > max_timeout:
+            if time.time() - start_compute_time - time_offset > max_timeout:
                 mb.showerror("Simulation Warning", f"Simulation cut short! Reached compute timeout of {max_timeout}s.")
                 # Chop off the empty zeros at the end of the history array
                 history = history[:actual_completed_steps]
@@ -532,6 +545,7 @@ class DiffusionGUI:
 
         self.ax_map.clear()
         self.ax_hist_disp.clear()
+        self.ax_mean_disp.clear()
         self.ax_hist_x.clear()
         self.ax_hist_y.clear()
 
@@ -606,6 +620,36 @@ class DiffusionGUI:
             self.ax_hist_disp.hist(hist_distances, bins=disp_bins, color=c_disp, rwidth=1.0)
         self.ax_hist_disp.set_title(f"Displacement ({filter_val})")
         self.ax_hist_disp.set_xlim(0, map_bound)
+
+        # --- MEAN DISPLACEMENT OVER TIME ---
+        # Get the history for ONLY the visible AND currently filtered molecules
+        filtered_history_x = self.history[:, visible_mask, 0][:, hist_mask]
+        filtered_history_y = self.history[:, visible_mask, 1][:, hist_mask]
+        
+        if filtered_history_x.shape[1] > 0:
+            all_time_distances = np.sqrt(filtered_history_x**2 + filtered_history_y**2)
+            mean_displacements = np.mean(all_time_distances, axis=1)
+            
+            times = np.arange(len(mean_displacements)) + start_t
+            
+            # Plot the line for the entire history
+            self.ax_mean_disp.plot(times, mean_displacements, color=c_disp, linewidth=2)
+            # Add a distinct red dot to track the exact current frame you are on!
+            self.ax_mean_disp.plot(times[step], mean_displacements[step], marker='o', color='red', markersize=6, zorder=5)
+
+            sqrt_step_size = 0.1
+            sqrt_times = np.arange(0, len(mean_displacements) - 1 + sqrt_step_size, sqrt_step_size) + start_t
+            if sqrt_times[-1] > 0:
+                sqrt_values = np.sqrt(sqrt_times)
+                k = mean_displacements[-1] * sqrt_values[-1] / sqrt_times[-1]
+                self.ax_mean_disp.plot(sqrt_times, sqrt_values * k, linestyle="--", alpha=0.5, color="blue" if c_disp != "blue" else "red")
+            
+        self.ax_mean_disp.set_title(f"Mean Displacement over Time ({filter_val})")
+        
+        total_time = start_t + len(self.history) - 1
+        self.ax_mean_disp.set_xlim(start_t, total_time if total_time > start_t else start_t + 1)
+        self.ax_mean_disp.set_ylim(0, self.max_simulation_dist)
+        self.ax_mean_disp.grid(True, linestyle=':', alpha=0.6)
 
         if len(hist_x_coords) > 0:
             self.ax_hist_x.hist(hist_x_coords, bins=xy_bins, color=c_x, rwidth=1.0)
